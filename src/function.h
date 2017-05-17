@@ -47,7 +47,7 @@ namespace L2{
                 std::vector<compiler_ptr<Instruction>> spill_these(std::vector<compiler_ptr<IG_Node>>);
                 void insert_spill_accesses(
                         std::vector<compiler_ptr<Instruction>>::iterator pos,
-                        const std::string &id_to_spill,
+                        const std::vector<std::string> &ids_to_spill,
                         const std::unordered_map<std::string, std::string> &spill_map,
                         std::vector<compiler_ptr<Instruction>> & new_instrs);
 

@@ -188,42 +188,62 @@ make_interference_graph(){
 using str_to_str_umap = std::unordered_map<std::string, std::string>;
 using i_ptr_vec = std::vector<compiler_ptr<Instruction>>;
 void Function::insert_spill_accesses(i_ptr_vec::iterator pos,
-                                     const std::string &id_to_spill,
+                                     const std::vector<std::string> &ids_to_spill,
                                      const str_to_str_umap &spill_map,
                                      i_ptr_vec &new_instrs){
 
         assert(pos != instructions.end());
 
-        if(!spill_offset_table.count(id_to_spill)){
-                int64_t offset = locals * 8;
-                spill_offset_table[id_to_spill] = offset;
-                locals += 1;
+        for(auto id_to_spill : ids_to_spill){
+                if(!spill_offset_table.count(id_to_spill)){
+                        int64_t offset = locals * 8;
+                        spill_offset_table[id_to_spill] = offset;
+                        locals += 1;
+                }
+
+                compiler_ptr<AST_Item> spill_var{new Var{spill_map.at(id_to_spill)}};
+                compiler_ptr<AST_Item> spill_mem_ref{new Memory_Ref{
+                                compiler_ptr<L2_ID>{new Reg{"rsp"}},
+                                        spill_offset_table[id_to_spill]}};
+
+                // This is terrible
+                auto spill_var_read = std::dynamic_pointer_cast<Binop_Lhs>(spill_var);
+                auto spill_mem_ref_write = std::dynamic_pointer_cast<Binop_Rhs>(spill_mem_ref);
+                compiler_ptr<Instruction> spill_read{new Binop{
+                                Binop_Op::store,
+                                        spill_var_read,
+                                        spill_mem_ref_write}};
+
+                new_instrs.push_back(spill_read);
         }
 
-        compiler_ptr<AST_Item> spill_var{new Var{spill_map.at(id_to_spill)}};
-        compiler_ptr<AST_Item> spill_mem_ref{new Memory_Ref{
-                        compiler_ptr<L2_ID>{new Reg{"rsp"}},
-                                spill_offset_table[id_to_spill]}};
+        compiler_ptr<Instruction> i_ptr = *pos;
+        for(auto id_to_spill : ids_to_spill){
+                i_ptr = i_ptr->replace_vars(spill_map);
+        }
 
-        // This is terrible
-        auto spill_var_read = std::dynamic_pointer_cast<Binop_Lhs>(spill_var);
-        auto spill_var_write = std::dynamic_pointer_cast<Binop_Rhs>(spill_var);
-        auto spill_mem_ref_read = std::dynamic_pointer_cast<Binop_Lhs>(spill_mem_ref);
-        auto spill_mem_ref_write = std::dynamic_pointer_cast<Binop_Rhs>(spill_mem_ref);
+        new_instrs.push_back((i_ptr));
+
+        for(auto id_to_spill : ids_to_spill){
+
+                compiler_ptr<AST_Item> spill_var{new Var{spill_map.at(id_to_spill)}};
+                compiler_ptr<AST_Item> spill_mem_ref{new Memory_Ref{
+                                compiler_ptr<L2_ID>{new Reg{"rsp"}},
+                                        spill_offset_table[id_to_spill]}};
+
+                auto spill_mem_ref_read = std::dynamic_pointer_cast<Binop_Lhs>(spill_mem_ref);
+                auto spill_var_write = std::dynamic_pointer_cast<Binop_Rhs>(spill_var);
 
 
-        compiler_ptr<Instruction> spill_read{new Binop{
-                        Binop_Op::store,
-                                spill_var_read,
-                                spill_mem_ref_write}};
-        compiler_ptr<Instruction> spill_write{new Binop{
-                        Binop_Op::store,
-                                spill_mem_ref_read,
-                                spill_var_write}};
+                compiler_ptr<Instruction> spill_write{new Binop{
+                                Binop_Op::store,
+                                        spill_mem_ref_read,
+                                        spill_var_write}};
 
-        new_instrs.push_back(spill_read);
-        new_instrs.push_back((*pos)->replace_vars(spill_map));
-        new_instrs.push_back(spill_write);
+
+                new_instrs.push_back(spill_write);
+        }
+
 }
 
 
@@ -258,15 +278,21 @@ Function::spill_these(std::vector<compiler_ptr<IG_Node>> spills){
 
                 i_ptr->accept(v);
 
+                // TODO: Factor this into spill reads/writes in visitors..
+                std::vector<std::string> to_spill;
                 bool spilled{false};
                 for(auto id : v.result){
                         if(spill_map.count(id)){
                                 spilled = true;
-                                insert_spill_accesses(instr, id, spill_map, new_instrs);
+                                to_spill.push_back(id);
                         }
                 }
 
-                if(!spilled){
+                if(spilled){
+                        insert_spill_accesses(instr, to_spill, spill_map, new_instrs);
+                }
+
+                else {
                         i_ptr->in = io_set_t{};
                         i_ptr->out = io_set_t{};
                         new_instrs.push_back(i_ptr);
@@ -297,8 +323,13 @@ compiler_ptr<Function> Function::allocate_registers(){
                         instructions = spill_these(spills);
                 }
 
-        } while(!allocated);
+                // std::cout << "trying to allocate regs for function:\n\n";
+                // dump(std::cout);
+                // std::cout << "With spills\n\n";
+                // std::cout << spills << "\n\n";
 
+
+        } while(!allocated);
 
 
         Get_Ids_Visitor v;

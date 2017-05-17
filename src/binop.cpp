@@ -50,8 +50,13 @@ io_set_t Binop::gen() const{
 
         insert_name(gen_st, rhs);
 
+        // stupid
+        Memory_Ref* mem_ptr = nullptr;
         switch(op){
         case(Binop_Op::store):
+                if(mem_ptr = dynamic_cast<Memory_Ref*>(lhs.get())){
+                        insert_name(gen_st, mem_ptr->get_base());
+                }
                 break;
         default:
                 insert_name(gen_st, lhs);
