@@ -267,6 +267,8 @@ Function::spill_these(std::vector<compiler_ptr<IG_Node>> spills){
                 }
 
                 if(!spilled){
+                        i_ptr->in = io_set_t{};
+                        i_ptr->out = io_set_t{};
                         new_instrs.push_back(i_ptr);
                 }
         }
@@ -294,7 +296,6 @@ compiler_ptr<Function> Function::allocate_registers(){
                         allocated = false;
                         instructions = spill_these(spills);
                 }
-
 
         } while(!allocated);
 
